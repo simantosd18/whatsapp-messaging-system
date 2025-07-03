@@ -1,9 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, X } from 'lucide-react';
+import { Mic, X, Send } from 'lucide-react';
 
 const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [hasRecording, setHasRecording] = useState(false);
+  const [audioBlob, setAudioBlob] = useState(null);
   
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
@@ -13,7 +15,7 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
   useEffect(() => {
     startRecording();
     return () => {
-      forceCleanup();
+      cleanup();
     };
   }, []);
 
@@ -35,8 +37,8 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
     };
   }, [isRecording]);
 
-  const forceCleanup = () => {
-    console.log('Force cleanup called');
+  const cleanup = () => {
+    console.log('Cleanup called');
     
     // Stop timer
     if (timerRef.current) {
@@ -56,13 +58,13 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
       mediaRecorderRef.current = null;
     }
 
-    // Force stop all tracks
+    // Stop all tracks to release microphone
     if (streamRef.current) {
       try {
         streamRef.current.getTracks().forEach(track => {
           console.log('Stopping track:', track.kind, track.readyState);
           track.stop();
-          console.log('Track stopped:', track.readyState);
+          console.log('Track after stop:', track.readyState);
         });
       } catch (e) {
         console.log('Track stop error:', e);
@@ -87,7 +89,7 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
       });
       
       streamRef.current = stream;
-      console.log('Stream obtained:', stream.getTracks().length, 'tracks');
+      console.log('Stream obtained');
       
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: 'audio/webm;codecs=opus'
@@ -102,25 +104,23 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
       };
 
       mediaRecorder.onstop = () => {
-        console.log('MediaRecorder stopped, processing...');
+        console.log('MediaRecorder stopped');
         setIsRecording(false);
         
-        // Force cleanup immediately
-        forceCleanup();
+        // Release microphone immediately
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => {
+            track.stop();
+            console.log('Track stopped on recorder stop:', track.readyState);
+          });
+          streamRef.current = null;
+        }
         
         if (chunksRef.current.length > 0) {
           const blob = new Blob(chunksRef.current, { type: 'audio/webm;codecs=opus' });
-          const reader = new FileReader();
-          reader.onload = () => {
-            console.log('Sending voice message...');
-            onSend({
-              audioDataURL: reader.result,
-              duration: recordingTime,
-              size: blob.size,
-              mimeType: blob.type
-            });
-          };
-          reader.readAsDataURL(blob);
+          setAudioBlob(blob);
+          setHasRecording(true);
+          console.log('Recording ready to send');
         }
       };
 
@@ -130,28 +130,38 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
       console.log('Recording started');
     } catch (error) {
       console.error('Recording start error:', error);
-      forceCleanup();
+      cleanup();
       onCancel();
     }
   };
 
   const stopRecording = () => {
     console.log('Stop recording requested');
-    setIsRecording(false);
     
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      console.log('Stopping MediaRecorder...');
       mediaRecorderRef.current.stop();
-    } else {
-      // If recorder is not recording, force cleanup
-      forceCleanup();
-      onCancel();
+    }
+  };
+
+  const sendRecording = () => {
+    if (audioBlob && recordingTime > 0) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        console.log('Sending voice message...');
+        onSend({
+          audioDataURL: reader.result,
+          duration: recordingTime,
+          size: audioBlob.size,
+          mimeType: audioBlob.type
+        });
+      };
+      reader.readAsDataURL(audioBlob);
     }
   };
 
   const handleCancel = () => {
     console.log('Recording cancelled');
-    forceCleanup();
+    cleanup();
     onCancel();
   };
 
@@ -163,13 +173,18 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
 
   return (
     <div className="flex items-center space-x-3 bg-gray-100 rounded-lg p-3">
+      {/* Recording indicator */}
       <div className="flex items-center space-x-2">
-        <div className={`w-3 h-3 rounded-full ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-gray-400'}`} />
+        <div className={`w-3 h-3 rounded-full ${
+          isRecording ? 'bg-red-500 animate-pulse' : 
+          hasRecording ? 'bg-green-500' : 'bg-gray-400'
+        }`} />
         <span className="text-sm font-mono text-gray-700">
           {formatTime(recordingTime)}
         </span>
       </div>
 
+      {/* Waveform visualization */}
       <div className="flex-1 flex items-center justify-center space-x-1 h-8">
         {Array.from({ length: 15 }).map((_, i) => (
           <div
@@ -179,17 +194,19 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
             }`}
             style={{
               height: `${10 + Math.random() * 20}px`,
-              opacity: isRecording ? 1 : 0.5,
+              opacity: isRecording ? 1 : hasRecording ? 0.8 : 0.5,
               animationDelay: `${i * 50}ms`
             }}
           />
         ))}
       </div>
 
+      {/* Status text */}
       <div className="text-xs text-gray-600">
-        {isRecording ? 'Recording' : 'Ready'}
+        {isRecording ? 'Recording' : hasRecording ? 'Ready to send' : 'Ready'}
       </div>
 
+      {/* Action buttons */}
       <div className="flex items-center space-x-2">
         <button
           onClick={handleCancel}
@@ -199,13 +216,23 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
           <X className="w-5 h-5" />
         </button>
 
-        <button
-          onClick={stopRecording}
-          className="p-2 bg-red-500 hover:bg-red-600 text-white rounded-full transition-colors"
-          title="Stop and send"
-        >
-          <div className="w-3 h-3 bg-white rounded-sm" />
-        </button>
+        {isRecording ? (
+          <button
+            onClick={stopRecording}
+            className="p-2 bg-red-500 hover:bg-red-600 text-white rounded-full transition-colors"
+            title="Stop recording"
+          >
+            <div className="w-3 h-3 bg-white rounded-sm" />
+          </button>
+        ) : hasRecording ? (
+          <button
+            onClick={sendRecording}
+            className="p-2 bg-green-500 hover:bg-green-600 text-white rounded-full transition-colors"
+            title="Send voice message"
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        ) : null}
       </div>
     </div>
   );
