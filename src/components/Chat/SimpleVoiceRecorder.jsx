@@ -15,7 +15,7 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
   useEffect(() => {
     startRecording();
     return () => {
-      cleanup();
+      forceCleanup();
     };
   }, []);
 
@@ -37,8 +37,8 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
     };
   }, [isRecording]);
 
-  const cleanup = () => {
-    console.log('Cleanup called');
+  const forceCleanup = () => {
+    console.log('Force cleanup called');
     
     // Stop timer
     if (timerRef.current) {
@@ -58,13 +58,13 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
       mediaRecorderRef.current = null;
     }
 
-    // Stop all tracks to release microphone
+    // Force stop all tracks to release microphone
     if (streamRef.current) {
       try {
         streamRef.current.getTracks().forEach(track => {
-          console.log('Stopping track:', track.kind, track.readyState);
+          console.log('Force stopping track:', track.kind, track.readyState);
           track.stop();
-          console.log('Track after stop:', track.readyState);
+          console.log('Track after force stop:', track.readyState);
         });
       } catch (e) {
         console.log('Track stop error:', e);
@@ -85,15 +85,27 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
+          sampleRate: 44100,
+          channelCount: 1
         } 
       });
       
       streamRef.current = stream;
       console.log('Stream obtained');
       
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus'
-      });
+      // Use a more compatible format
+      let mimeType = 'audio/webm;codecs=opus';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'audio/webm';
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = 'audio/mp4';
+          if (!MediaRecorder.isTypeSupported(mimeType)) {
+            mimeType = ''; // Let browser choose
+          }
+        }
+      }
+      
+      const mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
 
@@ -107,7 +119,7 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
         console.log('MediaRecorder stopped');
         setIsRecording(false);
         
-        // Release microphone immediately
+        // IMMEDIATELY release microphone
         if (streamRef.current) {
           streamRef.current.getTracks().forEach(track => {
             track.stop();
@@ -117,20 +129,22 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
         }
         
         if (chunksRef.current.length > 0) {
-          const blob = new Blob(chunksRef.current, { type: 'audio/webm;codecs=opus' });
+          const blob = new Blob(chunksRef.current, { 
+            type: mimeType || 'audio/webm' 
+          });
           setAudioBlob(blob);
           setHasRecording(true);
-          console.log('Recording ready to send');
+          console.log('Recording ready to send, blob size:', blob.size);
         }
       };
 
       mediaRecorder.start(100);
       setIsRecording(true);
       setRecordingTime(0);
-      console.log('Recording started');
+      console.log('Recording started with mimeType:', mimeType);
     } catch (error) {
       console.error('Recording start error:', error);
-      cleanup();
+      forceCleanup();
       onCancel();
     }
   };
@@ -141,6 +155,19 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop();
     }
+    
+    // Force immediate cleanup
+    setTimeout(() => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => {
+          if (track.readyState !== 'ended') {
+            track.stop();
+            console.log('Force stopped track in timeout');
+          }
+        });
+        streamRef.current = null;
+      }
+    }, 100);
   };
 
   const sendRecording = () => {
@@ -154,6 +181,9 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
           size: audioBlob.size,
           mimeType: audioBlob.type
         });
+        
+        // Final cleanup after sending
+        forceCleanup();
       };
       reader.readAsDataURL(audioBlob);
     }
@@ -161,7 +191,7 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
 
   const handleCancel = () => {
     console.log('Recording cancelled');
-    cleanup();
+    forceCleanup();
     onCancel();
   };
 
