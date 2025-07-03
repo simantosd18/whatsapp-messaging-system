@@ -118,7 +118,6 @@ const VoicePlayer = ({ audioDataURL, initialDuration, isOwnMessage, className = 
         ref={audioRef} 
         src={audioDataURL} 
         preload="metadata"
-        crossOrigin="anonymous"
       />
       
       <button
