@@ -4,15 +4,20 @@ import { Mic, X } from 'lucide-react';
 const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [isProcessing, setIsProcessing] = useState(false);
   
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const timerRef = useRef(null);
   const streamRef = useRef(null);
+  const isStoppedRef = useRef(false);
 
   useEffect(() => {
     startRecording();
-    return () => cleanup();
+    return () => {
+      console.log('Component unmounting, cleaning up...');
+      cleanup();
+    };
   }, []);
 
   useEffect(() => {
@@ -21,13 +26,22 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
         setRecordingTime(prev => prev + 1);
       }, 1000);
     } else {
-      clearInterval(timerRef.current);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
     }
 
-    return () => clearInterval(timerRef.current);
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
   }, [isRecording]);
 
   const cleanup = () => {
+    console.log('Cleanup called');
+    
     // Stop the timer
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -35,22 +49,29 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
     }
 
     // Stop media recorder if it's recording
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      mediaRecorderRef.current.stop();
+    if (mediaRecorderRef.current) {
+      if (mediaRecorderRef.current.state === 'recording') {
+        console.log('Stopping media recorder...');
+        mediaRecorderRef.current.stop();
+      }
+      mediaRecorderRef.current = null;
     }
 
     // Stop all tracks to release microphone
     if (streamRef.current) {
+      console.log('Stopping media stream tracks...');
       streamRef.current.getTracks().forEach(track => {
         track.stop();
-        console.log('Track stopped:', track.kind);
+        console.log('Track stopped:', track.kind, track.readyState);
       });
       streamRef.current = null;
     }
 
-    // Reset refs
-    mediaRecorderRef.current = null;
+    // Reset state
+    setIsRecording(false);
+    setIsProcessing(false);
     chunksRef.current = [];
+    isStoppedRef.current = false;
   };
 
   const startRecording = async () => {
@@ -67,6 +88,12 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
       console.log('Microphone access granted');
       streamRef.current = stream;
       
+      // Check if component is still mounted
+      if (isStoppedRef.current) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
+      
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: 'audio/webm;codecs=opus'
       });
@@ -81,20 +108,25 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
       };
 
       mediaRecorder.onstop = async () => {
-        console.log('Recording stopped, chunks:', chunksRef.current.length);
+        console.log('MediaRecorder stopped, processing audio...');
         setIsRecording(false);
+        setIsProcessing(true);
         
         if (chunksRef.current.length > 0 && recordingTime > 0) {
           const blob = new Blob(chunksRef.current, { type: 'audio/webm;codecs=opus' });
           console.log('Created blob:', blob.size, 'bytes');
           
           try {
-            // Convert blob to data URL for storage
+            // Convert blob to data URL
             const reader = new FileReader();
             reader.onload = () => {
               const audioDataURL = reader.result;
-              console.log('Sending voice message...');
+              console.log('Audio converted to data URL, sending...');
               
+              // Clean up before sending
+              cleanup();
+              
+              // Send the voice message
               onSend({
                 audioBlob: blob,
                 audioDataURL: audioDataURL,
@@ -103,13 +135,22 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
                 mimeType: blob.type
               });
             };
+            
+            reader.onerror = (error) => {
+              console.error('FileReader error:', error);
+              cleanup();
+              onCancel();
+            };
+            
             reader.readAsDataURL(blob);
           } catch (error) {
             console.error('Error processing audio:', error);
+            cleanup();
             onCancel();
           }
         } else {
           console.log('No audio data to send');
+          cleanup();
           onCancel();
         }
       };
@@ -134,12 +175,23 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
   const stopRecording = () => {
     console.log('Stop recording requested');
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      console.log('Stopping MediaRecorder...');
       mediaRecorderRef.current.stop();
+    }
+    
+    // Stop the stream immediately to release microphone
+    if (streamRef.current) {
+      console.log('Stopping stream tracks...');
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+        console.log('Track stopped immediately:', track.kind);
+      });
     }
   };
 
   const handleCancel = () => {
-    console.log('Recording cancelled');
+    console.log('Recording cancelled by user');
+    isStoppedRef.current = true;
     cleanup();
     onCancel();
   };
@@ -154,7 +206,10 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
     <div className="flex items-center space-x-3 bg-gray-100 rounded-lg p-3">
       {/* Recording indicator */}
       <div className="flex items-center space-x-2">
-        <div className={`w-3 h-3 rounded-full ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-gray-400'}`} />
+        <div className={`w-3 h-3 rounded-full ${
+          isRecording ? 'bg-red-500 animate-pulse' : 
+          isProcessing ? 'bg-yellow-500 animate-pulse' : 'bg-gray-400'
+        }`} />
         <span className="text-sm font-mono text-gray-700">
           {formatTime(recordingTime)}
         </span>
@@ -177,11 +232,17 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
         ))}
       </div>
 
+      {/* Status text */}
+      <div className="text-xs text-gray-600">
+        {isProcessing ? 'Sending...' : isRecording ? 'Recording' : 'Ready'}
+      </div>
+
       {/* Action buttons */}
       <div className="flex items-center space-x-2">
         <button
           onClick={handleCancel}
-          className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-full transition-colors"
+          disabled={isProcessing}
+          className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-full transition-colors disabled:opacity-50"
           title="Cancel recording"
         >
           <X className="w-5 h-5" />
@@ -190,7 +251,8 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
         {isRecording && (
           <button
             onClick={stopRecording}
-            className="p-2 bg-red-500 hover:bg-red-600 text-white rounded-full transition-colors"
+            disabled={isProcessing}
+            className="p-2 bg-red-500 hover:bg-red-600 text-white rounded-full transition-colors disabled:opacity-50"
             title="Stop and send"
           >
             <div className="w-3 h-3 bg-white rounded-sm" />

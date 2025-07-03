@@ -414,7 +414,8 @@ const MessageArea = () => {
   };
 
   const handleVoiceSend = async (voiceMessage) => {
-    console.log('Voice message received:', voiceMessage);
+    console.log('Voice message received for sending:', voiceMessage);
+    
     try {
       const messageData = {
         chatId: activeChat,
@@ -434,6 +435,8 @@ const MessageArea = () => {
 
       console.log('Sending voice message data:', messageData);
       await dispatch(sendMessage(messageData)).unwrap();
+      console.log('Voice message sent successfully');
+      
       setReplyingTo(null);
       setIsRecordingVoice(false);
       
