@@ -1,10 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, Send, X } from 'lucide-react';
+import { Mic, X } from 'lucide-react';
 
 const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
-  const [audioBlob, setAudioBlob] = useState(null);
   
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
@@ -62,8 +61,19 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
 
       mediaRecorder.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-        setAudioBlob(blob);
         setIsRecording(false);
+        
+        // Automatically send when recording stops
+        if (blob && recordingTime > 0) {
+          const audioUrl = URL.createObjectURL(blob);
+          onSend({
+            audioBlob: blob,
+            audioUrl,
+            duration: recordingTime,
+            size: blob.size,
+            mimeType: blob.type
+          });
+        }
       };
 
       mediaRecorder.start();
@@ -84,17 +94,9 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
     }
   };
 
-  const handleSend = () => {
-    if (audioBlob) {
-      const audioUrl = URL.createObjectURL(audioBlob);
-      onSend({
-        audioBlob,
-        audioUrl,
-        duration: recordingTime,
-        size: audioBlob.size,
-        mimeType: audioBlob.type
-      });
-    }
+  const handleCancel = () => {
+    cleanup();
+    onCancel();
   };
 
   const formatTime = (seconds) => {
@@ -132,30 +134,20 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
       {/* Action buttons */}
       <div className="flex items-center space-x-2">
         <button
-          onClick={onCancel}
+          onClick={handleCancel}
           className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-full transition-colors"
           title="Cancel"
         >
           <X className="w-5 h-5" />
         </button>
 
-        {isRecording ? (
-          <button
-            onClick={stopRecording}
-            className="p-2 bg-red-500 hover:bg-red-600 text-white rounded-full transition-colors"
-            title="Stop recording"
-          >
-            <div className="w-3 h-3 bg-white rounded-sm" />
-          </button>
-        ) : audioBlob ? (
-          <button
-            onClick={handleSend}
-            className="p-2 bg-green-500 hover:bg-green-600 text-white rounded-full transition-colors"
-            title="Send voice message"
-          >
-            <Send className="w-5 h-5" />
-          </button>
-        ) : null}
+        <button
+          onClick={stopRecording}
+          className="p-2 bg-red-500 hover:bg-red-600 text-white rounded-full transition-colors"
+          title="Stop and send"
+        >
+          <div className="w-3 h-3 bg-white rounded-sm" />
+        </button>
       </div>
     </div>
   );
