@@ -408,19 +408,19 @@ const MessageArea = () => {
   };
 
   const handleVoiceRecordStart = () => {
+    console.log('Starting voice recording...');
     setIsRecordingVoice(true);
     setShowEmojiPicker(false);
   };
 
   const handleVoiceSend = async (voiceMessage) => {
+    console.log('Voice message received:', voiceMessage);
     try {
-      const audioDataURL = await blobToDataURL(voiceMessage.audioBlob);
-      
       const messageData = {
         chatId: activeChat,
         content: '',
         type: 'voice',
-        audioDataURL: audioDataURL,
+        audioDataURL: voiceMessage.audioDataURL,
         fileName: `voice_${Date.now()}.webm`,
         fileSize: formatFileSize(voiceMessage.size),
         fileType: voiceMessage.mimeType,
@@ -432,6 +432,7 @@ const MessageArea = () => {
         } : null,
       };
 
+      console.log('Sending voice message data:', messageData);
       await dispatch(sendMessage(messageData)).unwrap();
       setReplyingTo(null);
       setIsRecordingVoice(false);
@@ -448,6 +449,7 @@ const MessageArea = () => {
   };
 
   const handleVoiceCancel = () => {
+    console.log('Voice recording cancelled');
     setIsRecordingVoice(false);
   };
 

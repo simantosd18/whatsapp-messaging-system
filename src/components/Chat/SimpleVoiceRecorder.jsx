@@ -28,17 +28,34 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
   }, [isRecording]);
 
   const cleanup = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+    // Stop the timer
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    // Stop media recorder if it's recording
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop();
     }
+
+    // Stop all tracks to release microphone
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+        console.log('Track stopped:', track.kind);
+      });
+      streamRef.current = null;
     }
-    clearInterval(timerRef.current);
+
+    // Reset refs
+    mediaRecorderRef.current = null;
+    chunksRef.current = [];
   };
 
   const startRecording = async () => {
     try {
+      console.log('Requesting microphone access...');
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           echoCancellation: true,
@@ -47,54 +64,82 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
         } 
       });
       
+      console.log('Microphone access granted');
       streamRef.current = stream;
       
-      const mediaRecorder = new MediaRecorder(stream);
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: 'audio/webm;codecs=opus'
+      });
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
 
       mediaRecorder.ondataavailable = (event) => {
+        console.log('Data available:', event.data.size);
         if (event.data.size > 0) {
           chunksRef.current.push(event.data);
         }
       };
 
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+      mediaRecorder.onstop = async () => {
+        console.log('Recording stopped, chunks:', chunksRef.current.length);
         setIsRecording(false);
         
-        // Automatically send when recording stops
-        if (blob && recordingTime > 0) {
-          const audioUrl = URL.createObjectURL(blob);
-          onSend({
-            audioBlob: blob,
-            audioUrl,
-            duration: recordingTime,
-            size: blob.size,
-            mimeType: blob.type
-          });
+        if (chunksRef.current.length > 0 && recordingTime > 0) {
+          const blob = new Blob(chunksRef.current, { type: 'audio/webm;codecs=opus' });
+          console.log('Created blob:', blob.size, 'bytes');
+          
+          try {
+            // Convert blob to data URL for storage
+            const reader = new FileReader();
+            reader.onload = () => {
+              const audioDataURL = reader.result;
+              console.log('Sending voice message...');
+              
+              onSend({
+                audioBlob: blob,
+                audioDataURL: audioDataURL,
+                duration: recordingTime,
+                size: blob.size,
+                mimeType: blob.type
+              });
+            };
+            reader.readAsDataURL(blob);
+          } catch (error) {
+            console.error('Error processing audio:', error);
+            onCancel();
+          }
+        } else {
+          console.log('No audio data to send');
+          onCancel();
         }
       };
 
-      mediaRecorder.start();
+      mediaRecorder.onerror = (event) => {
+        console.error('MediaRecorder error:', event.error);
+        cleanup();
+        onCancel();
+      };
+
+      mediaRecorder.start(100); // Collect data every 100ms
       setIsRecording(true);
       setRecordingTime(0);
+      console.log('Recording started');
     } catch (error) {
       console.error('Error starting recording:', error);
+      cleanup();
       onCancel();
     }
   };
 
   const stopRecording = () => {
+    console.log('Stop recording requested');
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop();
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
     }
   };
 
   const handleCancel = () => {
+    console.log('Recording cancelled');
     cleanup();
     onCancel();
   };
@@ -125,7 +170,8 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
             }`}
             style={{
               height: `${10 + Math.random() * 20}px`,
-              opacity: isRecording ? 1 : 0.5
+              opacity: isRecording ? 1 : 0.5,
+              animationDelay: `${i * 50}ms`
             }}
           />
         ))}
@@ -136,18 +182,20 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
         <button
           onClick={handleCancel}
           className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-full transition-colors"
-          title="Cancel"
+          title="Cancel recording"
         >
           <X className="w-5 h-5" />
         </button>
 
-        <button
-          onClick={stopRecording}
-          className="p-2 bg-red-500 hover:bg-red-600 text-white rounded-full transition-colors"
-          title="Stop and send"
-        >
-          <div className="w-3 h-3 bg-white rounded-sm" />
-        </button>
+        {isRecording && (
+          <button
+            onClick={stopRecording}
+            className="p-2 bg-red-500 hover:bg-red-600 text-white rounded-full transition-colors"
+            title="Stop and send"
+          >
+            <div className="w-3 h-3 bg-white rounded-sm" />
+          </button>
+        )}
       </div>
     </div>
   );
