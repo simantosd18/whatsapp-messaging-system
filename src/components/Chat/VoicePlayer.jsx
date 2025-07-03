@@ -60,6 +60,11 @@ const VoicePlayer = ({ audioDataURL, initialDuration, isOwnMessage, className = 
       audio.removeEventListener('canplay', handleCanPlay);
       audio.removeEventListener('error', handleError);
       audio.removeEventListener('loadstart', handleLoadStart);
+      
+      // Clean up object URL to prevent memory leaks
+      if (audioDataURL && audioDataURL.startsWith('blob:')) {
+        URL.revokeObjectURL(audioDataURL);
+      }
     };
   }, [audioDataURL, initialDuration]);
 

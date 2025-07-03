@@ -172,20 +172,20 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
 
   const sendRecording = () => {
     if (audioBlob && recordingTime > 0) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        console.log('Sending voice message...');
-        onSend({
-          audioDataURL: reader.result,
-          duration: recordingTime,
-          size: audioBlob.size,
-          mimeType: audioBlob.type
-        });
-        
-        // Final cleanup after sending
-        forceCleanup();
-      };
-      reader.readAsDataURL(audioBlob);
+      console.log('Sending voice message...');
+      
+      // Create object URL instead of data URL for better browser compatibility
+      const audioURL = URL.createObjectURL(audioBlob);
+      
+      onSend({
+        audioDataURL: audioURL,
+        duration: recordingTime,
+        size: audioBlob.size,
+        mimeType: audioBlob.type
+      });
+      
+      // Final cleanup after sending
+      forceCleanup();
     }
   };
 
