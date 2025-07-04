@@ -61,10 +61,8 @@ const VoicePlayer = ({ audioDataURL, initialDuration, isOwnMessage, className = 
       audio.removeEventListener('error', handleError);
       audio.removeEventListener('loadstart', handleLoadStart);
       
-      // Revoke the blob URL when this effect cleans up
-      if (audioDataURL && audioDataURL.startsWith('blob:')) {
-        URL.revokeObjectURL(audioDataURL);
-      }
+      // Do not revoke blob URL here - it should persist for the application session
+      // URL management should be handled at a higher level (e.g., Redux store cleanup)
     };
   }, [audioDataURL, initialDuration]);
 
