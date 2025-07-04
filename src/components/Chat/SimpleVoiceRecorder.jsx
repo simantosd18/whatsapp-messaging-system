@@ -96,12 +96,12 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
       // Prioritize formats that are well-supported for both recording and playback
       let mimeType = '';
       const supportedTypes = [
-        'audio/webm',
-        'audio/ogg',
-        'audio/mp4',
         'audio/webm;codecs=opus',
+        'audio/webm',
         'audio/ogg;codecs=opus',
-        'audio/mp4;codecs=mp4a.40.2'
+        'audio/ogg',
+        'audio/mp4;codecs=mp4a.40.2',
+        'audio/mp4'
       ];
       
       for (const type of supportedTypes) {
@@ -140,14 +140,14 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
         }
         
         if (chunksRef.current.length > 0) {
-          // Use the actual MIME type from the recorder or fall back to webm
-          const finalMimeType = mimeType || 'audio/webm';
+          // Use the actual MIME type from the MediaRecorder instance
+          const actualMimeType = mediaRecorderRef.current?.mimeType || mimeType || 'audio/webm';
           const blob = new Blob(chunksRef.current, { 
-            type: finalMimeType
+            type: actualMimeType
           });
           setAudioBlob(blob);
           setHasRecording(true);
-          console.log('Recording ready to send, blob size:', blob.size, 'type:', finalMimeType);
+          console.log('Recording ready to send, blob size:', blob.size, 'type:', actualMimeType);
         }
       };
 
