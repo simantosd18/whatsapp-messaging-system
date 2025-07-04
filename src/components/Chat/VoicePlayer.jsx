@@ -8,7 +8,6 @@ const VoicePlayer = ({ audioDataURL, initialDuration, isOwnMessage, className = 
   const [isLoading, setIsLoading] = useState(true);
   
   const audioRef = useRef(null);
-  const currentBlobURLRef = useRef(null);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -44,16 +43,6 @@ const VoicePlayer = ({ audioDataURL, initialDuration, isOwnMessage, className = 
       setIsLoading(true);
     };
 
-    // Revoke previous blob URL if it exists and is different
-    if (currentBlobURLRef.current && 
-        currentBlobURLRef.current !== audioDataURL && 
-        currentBlobURLRef.current.startsWith('blob:')) {
-      URL.revokeObjectURL(currentBlobURLRef.current);
-    }
-
-    // Store the current blob URL
-    currentBlobURLRef.current = audioDataURL;
-
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('ended', handleEnded);
@@ -71,19 +60,13 @@ const VoicePlayer = ({ audioDataURL, initialDuration, isOwnMessage, className = 
       audio.removeEventListener('canplay', handleCanPlay);
       audio.removeEventListener('error', handleError);
       audio.removeEventListener('loadstart', handleLoadStart);
-    };
-  }, [audioDataURL, initialDuration]);
-
-  // Cleanup effect that runs only on unmount
-  useEffect(() => {
-    return () => {
-      // Only revoke the blob URL when the component unmounts
-      if (currentBlobURLRef.current && currentBlobURLRef.current.startsWith('blob:')) {
-        URL.revokeObjectURL(currentBlobURLRef.current);
-        currentBlobURLRef.current = null;
+      
+      // Revoke the blob URL when this effect cleans up
+      if (audioDataURL && audioDataURL.startsWith('blob:')) {
+        URL.revokeObjectURL(audioDataURL);
       }
     };
-  }, []);
+  }, [audioDataURL, initialDuration]);
 
   const togglePlayPause = async () => {
     const audio = audioRef.current;
