@@ -145,9 +145,23 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
           const blob = new Blob(chunksRef.current, { 
             type: actualMimeType
           });
-          setAudioBlob(blob);
-          setHasRecording(true);
-          console.log('Recording ready to send, blob size:', blob.size, 'type:', actualMimeType);
+          
+          // Validate that the blob has actual audio data
+          if (blob.size > 0) {
+            setAudioBlob(blob);
+            setHasRecording(true);
+            console.log('Recording ready to send, blob size:', blob.size, 'type:', actualMimeType);
+          } else {
+            console.warn('Recording failed: blob is empty');
+            // Reset state since we don't have valid audio
+            setHasRecording(false);
+            setAudioBlob(null);
+          }
+        } else {
+          console.warn('Recording failed: no audio chunks captured');
+          // Reset state since we don't have valid audio
+          setHasRecording(false);
+          setAudioBlob(null);
         }
       };
 
@@ -184,7 +198,8 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
   };
 
   const sendRecording = () => {
-    if (audioBlob && recordingTime > 0) {
+    // Additional validation before sending
+    if (audioBlob && audioBlob.size > 0 && recordingTime > 0) {
       console.log('Sending voice message...');
       
       // Create object URL instead of data URL for better browser compatibility
@@ -199,6 +214,10 @@ const SimpleVoiceRecorder = ({ onSend, onCancel }) => {
       
       // Final cleanup after sending
       forceCleanup();
+    } else {
+      console.warn('Cannot send recording: invalid audio blob or duration');
+      // If we can't send, treat it as a cancel
+      handleCancel();
     }
   };
 
