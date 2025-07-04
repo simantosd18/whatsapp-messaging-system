@@ -134,7 +134,7 @@ const VoicePlayer = ({ audioDataURL, initialDuration, isOwnMessage, className = 
       <audio 
         ref={audioRef} 
         src={audioDataURL} 
-        preload="metadata"
+        preload="auto"
       />
       
       <button
