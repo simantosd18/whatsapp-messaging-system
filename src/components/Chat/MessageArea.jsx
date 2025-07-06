@@ -21,7 +21,7 @@ import MessageList from './MessageList';
 import EmojiPicker from './EmojiPicker';
 import FileUploadModal from './FileUploadModal';
 import MediaViewer from './MediaViewer';
-import SimpleVoiceRecorder from './SimpleVoiceRecorder';
+import VoiceRecorder from './VoiceRecorder';
 
 const MessageArea = () => {
   const dispatch = useDispatch();
@@ -75,20 +75,14 @@ const MessageArea = () => {
       const ctx = canvas.getContext('2d');
       
       video.addEventListener('loadedmetadata', () => {
-        // Set canvas dimensions to match video
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
-        
-        // Seek to 1 second or 10% of video duration, whichever is smaller
         const seekTime = Math.min(1, video.duration * 0.1);
         video.currentTime = seekTime;
       });
       
       video.addEventListener('seeked', () => {
-        // Draw the video frame to canvas
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        
-        // Convert canvas to blob URL
         canvas.toBlob((blob) => {
           if (blob) {
             const thumbnailUrl = URL.createObjectURL(blob);
@@ -166,14 +160,12 @@ const MessageArea = () => {
   // Close modals when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      // Check if click is outside file upload modal
       if (showFileUploadModal && 
           !event.target.closest('.file-upload-modal') && 
           !event.target.closest('[data-paperclip-button]')) {
         setShowFileUploadModal(false);
       }
       
-      // Close other modals
       if (showChatMenu && !event.target.closest('.chat-menu')) {
         setShowChatMenu(false);
       }
@@ -220,7 +212,6 @@ const MessageArea = () => {
       }
       
       setUploadedFiles([]);
-      // Clean up video thumbnails
       Object.values(videoThumbnails).forEach(url => {
         if (url && url.startsWith('blob:')) {
           URL.revokeObjectURL(url);
@@ -251,7 +242,6 @@ const MessageArea = () => {
     setReplyingTo(null);
     stopTyping();
     
-    // Auto-scroll to bottom when sending a message
     setTimeout(() => {
       if (messageListRef.current?.scrollToBottom) {
         messageListRef.current.scrollToBottom();
@@ -267,12 +257,10 @@ const MessageArea = () => {
       socketService.startTyping(activeChat);
     }
 
-    // Clear existing timeout
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
 
-    // Set new timeout
     typingTimeoutRef.current = setTimeout(() => {
       stopTyping();
     }, 1000);
@@ -408,14 +396,11 @@ const MessageArea = () => {
   };
 
   const handleVoiceRecordStart = () => {
-    console.log('Starting voice recording...');
     setIsRecordingVoice(true);
     setShowEmojiPicker(false);
   };
 
   const handleVoiceSend = async (voiceMessage) => {
-    console.log('Voice message received for sending:', voiceMessage);
-    
     try {
       const messageData = {
         chatId: activeChat,
@@ -433,9 +418,7 @@ const MessageArea = () => {
         } : null,
       };
 
-      console.log('Sending voice message data:', messageData);
       await dispatch(sendMessage(messageData)).unwrap();
-      console.log('Voice message sent successfully');
       
       setReplyingTo(null);
       setIsRecordingVoice(false);
@@ -452,7 +435,6 @@ const MessageArea = () => {
   };
 
   const handleVoiceCancel = () => {
-    console.log('Voice recording cancelled');
     setIsRecordingVoice(false);
   };
 
@@ -669,7 +651,7 @@ const MessageArea = () => {
         )}
         
         {isRecordingVoice ? (
-          <SimpleVoiceRecorder
+          <VoiceRecorder
             onSend={handleVoiceSend}
             onCancel={handleVoiceCancel}
           />
