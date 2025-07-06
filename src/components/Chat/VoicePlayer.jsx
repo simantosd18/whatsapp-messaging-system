@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Play, Pause, Download } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Play, Pause, Download, AlertCircle } from 'lucide-react';
 
 const VoicePlayer = ({ audioDataURL, initialDuration, isOwnMessage, className = '' }) => {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -7,62 +7,89 @@ const VoicePlayer = ({ audioDataURL, initialDuration, isOwnMessage, className = 
   const [duration, setDuration] = useState(initialDuration || 0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [loadAttempts, setLoadAttempts] = useState(0);
   
   const audioRef = useRef(null);
   const progressRef = useRef(null);
+  const mountedRef = useRef(true);
 
   // Format time helper
-  const formatTime = useCallback((seconds) => {
-    if (!seconds || isNaN(seconds)) return '0:00';
+  const formatTime = (seconds) => {
+    if (!seconds || isNaN(seconds) || seconds < 0) return '0:00';
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
-  }, []);
+  };
 
-  // Audio event handlers
-  const handleLoadedMetadata = useCallback(() => {
-    const audio = audioRef.current;
-    if (audio && audio.duration && !isNaN(audio.duration)) {
-      setDuration(audio.duration);
-    }
-    setIsLoading(false);
-  }, []);
-
-  const handleTimeUpdate = useCallback(() => {
-    const audio = audioRef.current;
-    if (audio) {
-      setCurrentTime(audio.currentTime);
-    }
-  }, []);
-
-  const handleEnded = useCallback(() => {
+  // Reset audio state
+  const resetAudioState = () => {
     setIsPlaying(false);
     setCurrentTime(0);
-    const audio = audioRef.current;
-    if (audio) {
-      audio.currentTime = 0;
-    }
-  }, []);
-
-  const handleCanPlay = useCallback(() => {
-    setIsLoading(false);
+    setIsLoading(true);
     setError(false);
-  }, []);
+  };
 
-  const handleError = useCallback((e) => {
-    console.error('Audio playback error:', e);
-    setError(true);
-    setIsLoading(false);
-    setIsPlaying(false);
-  }, []);
-
-  // Setup audio element
-  useEffect(() => {
+  // Load audio with retry mechanism
+  const loadAudio = () => {
     const audio = audioRef.current;
     if (!audio || !audioDataURL) return;
 
-    setIsLoading(true);
-    setError(false);
+    resetAudioState();
+
+    // Set up event listeners
+    const handleLoadedMetadata = () => {
+      if (!mountedRef.current) return;
+      
+      if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+        setDuration(audio.duration);
+      } else if (initialDuration) {
+        setDuration(initialDuration);
+      }
+      setIsLoading(false);
+      setError(false);
+    };
+
+    const handleTimeUpdate = () => {
+      if (!mountedRef.current) return;
+      setCurrentTime(audio.currentTime || 0);
+    };
+
+    const handleEnded = () => {
+      if (!mountedRef.current) return;
+      setIsPlaying(false);
+      setCurrentTime(0);
+      audio.currentTime = 0;
+    };
+
+    const handleCanPlay = () => {
+      if (!mountedRef.current) return;
+      setIsLoading(false);
+      setError(false);
+    };
+
+    const handleError = (e) => {
+      if (!mountedRef.current) return;
+      
+      console.error('Audio error:', e);
+      setError(true);
+      setIsLoading(false);
+      setIsPlaying(false);
+
+      // Retry loading up to 3 times
+      if (loadAttempts < 3) {
+        setTimeout(() => {
+          if (mountedRef.current) {
+            setLoadAttempts(prev => prev + 1);
+            audio.load();
+          }
+        }, 1000);
+      }
+    };
+
+    const handleLoadStart = () => {
+      if (!mountedRef.current) return;
+      setIsLoading(true);
+    };
 
     // Add event listeners
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
@@ -70,22 +97,51 @@ const VoicePlayer = ({ audioDataURL, initialDuration, isOwnMessage, className = 
     audio.addEventListener('ended', handleEnded);
     audio.addEventListener('canplay', handleCanPlay);
     audio.addEventListener('error', handleError);
+    audio.addEventListener('loadstart', handleLoadStart);
 
-    // Load the audio
+    // Start loading
     audio.load();
 
+    // Cleanup function
     return () => {
-      // Cleanup event listeners
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('ended', handleEnded);
       audio.removeEventListener('canplay', handleCanPlay);
       audio.removeEventListener('error', handleError);
+      audio.removeEventListener('loadstart', handleLoadStart);
     };
-  }, [audioDataURL, handleLoadedMetadata, handleTimeUpdate, handleEnded, handleCanPlay, handleError]);
+  };
+
+  // Setup audio when component mounts or audioDataURL changes
+  useEffect(() => {
+    mountedRef.current = true;
+    setLoadAttempts(0);
+    
+    if (audioDataURL) {
+      const cleanup = loadAudio();
+      return cleanup;
+    }
+
+    return () => {
+      mountedRef.current = false;
+    };
+  }, [audioDataURL]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      const audio = audioRef.current;
+      if (audio) {
+        audio.pause();
+        audio.src = '';
+      }
+    };
+  }, []);
 
   // Play/pause toggle
-  const togglePlayPause = useCallback(async () => {
+  const togglePlayPause = async () => {
     const audio = audioRef.current;
     if (!audio || isLoading || error) return;
 
@@ -97,6 +153,7 @@ const VoicePlayer = ({ audioDataURL, initialDuration, isOwnMessage, className = 
         // Reset to beginning if at end
         if (audio.currentTime >= audio.duration) {
           audio.currentTime = 0;
+          setCurrentTime(0);
         }
         
         await audio.play();
@@ -107,48 +164,62 @@ const VoicePlayer = ({ audioDataURL, initialDuration, isOwnMessage, className = 
       setError(true);
       setIsPlaying(false);
     }
-  }, [isPlaying, isLoading, error]);
+  };
 
   // Progress bar click handler
-  const handleProgressClick = useCallback((e) => {
+  const handleProgressClick = (e) => {
     const audio = audioRef.current;
-    if (!audio || duration === 0 || !progressRef.current) return;
+    if (!audio || duration === 0 || !progressRef.current || error) return;
 
     const rect = progressRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
-    const newTime = (clickX / rect.width) * duration;
+    const newTime = Math.max(0, Math.min((clickX / rect.width) * duration, duration));
     
-    audio.currentTime = Math.max(0, Math.min(newTime, duration));
-    setCurrentTime(audio.currentTime);
-  }, [duration]);
+    audio.currentTime = newTime;
+    setCurrentTime(newTime);
+  };
 
   // Download handler
-  const handleDownload = useCallback(() => {
+  const handleDownload = () => {
     if (audioDataURL) {
-      const link = document.createElement('a');
-      link.href = audioDataURL;
-      link.download = `voice_message_${Date.now()}.webm`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      try {
+        const link = document.createElement('a');
+        link.href = audioDataURL;
+        link.download = `voice_message_${Date.now()}.webm`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (downloadError) {
+        console.error('Download error:', downloadError);
+      }
     }
-  }, [audioDataURL]);
+  };
 
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const progress = duration > 0 ? Math.min((currentTime / duration) * 100, 100) : 0;
 
+  // Error state
   if (error) {
     return (
       <div className={`flex items-center space-x-3 p-3 rounded-lg ${className}`}>
-        <div className="text-red-500">
-          <Play className="w-6 h-6" />
+        <div className="flex-shrink-0 text-red-500">
+          <AlertCircle className="w-6 h-6" />
         </div>
-        <div className="flex-1">
-          <p className="text-sm text-red-600">Unable to play audio</p>
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm ${isOwnMessage ? 'text-red-200' : 'text-red-600'}`}>
+            Unable to play audio
+          </p>
+          <p className={`text-xs ${isOwnMessage ? 'text-red-300' : 'text-red-500'}`}>
+            Duration: {formatTime(duration)}
+          </p>
         </div>
         <button
           onClick={handleDownload}
-          className="p-1 text-gray-500 hover:text-gray-700"
-          title="Download"
+          className={`flex-shrink-0 p-2 rounded-full transition-colors ${
+            isOwnMessage 
+              ? 'bg-white bg-opacity-20 hover:bg-opacity-30 text-white' 
+              : 'bg-gray-200 hover:bg-gray-300 text-gray-600'
+          }`}
+          title="Download voice message"
         >
           <Download className="w-4 h-4" />
         </button>
@@ -157,11 +228,12 @@ const VoicePlayer = ({ audioDataURL, initialDuration, isOwnMessage, className = 
   }
 
   return (
-    <div className={`flex items-center space-x-3 p-3 rounded-lg min-w-[250px] ${className}`}>
+    <div className={`flex items-center space-x-3 p-3 rounded-lg min-w-[280px] ${className}`}>
       <audio 
         ref={audioRef} 
         src={audioDataURL} 
         preload="metadata"
+        crossOrigin="anonymous"
       />
       
       {/* Play/Pause Button */}
@@ -175,6 +247,7 @@ const VoicePlayer = ({ audioDataURL, initialDuration, isOwnMessage, className = 
               ? 'bg-white bg-opacity-20 hover:bg-opacity-30 text-white'
               : 'bg-green-500 hover:bg-green-600 text-white'
         }`}
+        title={isPlaying ? 'Pause' : 'Play'}
       >
         {isLoading ? (
           <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -185,7 +258,7 @@ const VoicePlayer = ({ audioDataURL, initialDuration, isOwnMessage, className = 
         )}
       </button>
 
-      {/* Progress and Waveform */}
+      {/* Progress and Controls */}
       <div className="flex-1 space-y-2">
         {/* Progress Bar */}
         <div 
