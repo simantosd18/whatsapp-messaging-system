@@ -133,17 +133,28 @@ const VoiceRecorder = ({ onSend, onCancel }) => {
   // Send recording
   const sendRecording = useCallback(() => {
     if (audioBlob && recordingTime > 0) {
-      const audioURL = URL.createObjectURL(audioBlob);
+      // Convert blob to base64 data URL for persistent storage
+      const reader = new FileReader();
+      reader.onload = () => {
+        const audioDataURL = reader.result;
+        
+        onSend({
+          audioDataURL: audioDataURL,
+          duration: recordingTime,
+          size: audioBlob.size,
+          mimeType: audioBlob.type,
+          blob: audioBlob // Keep reference for potential re-encoding
+        });
+        
+        cleanup();
+      };
       
-      onSend({
-        audioDataURL: audioURL,
-        duration: recordingTime,
-        size: audioBlob.size,
-        mimeType: audioBlob.type,
-        blob: audioBlob // Keep reference for potential re-encoding
-      });
+      reader.onerror = () => {
+        console.error('Failed to convert audio blob to data URL');
+        setError('Failed to process recording');
+      };
       
-      cleanup();
+      reader.readAsDataURL(audioBlob);
     }
   }, [audioBlob, recordingTime, onSend, cleanup]);
 
