@@ -118,3 +118,28 @@
 .pointer-events-auto {
   pointer-events: auto;
 }
+
+/* Animation delays for call loading dots */
+.animation-delay-200 {
+  animation-delay: 0.2s;
+}
+
+.animation-delay-400 {
+  animation-delay: 0.4s;
+}
+
+/* Call modal animations */
+@keyframes callPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.8;
+  }
+}
+
+.call-pulse {
+  animation: callPulse 2s ease-in-out infinite;
+}

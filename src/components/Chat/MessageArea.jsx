@@ -22,6 +22,7 @@ import EmojiPicker from './EmojiPicker';
 import FileUploadModal from './FileUploadModal';
 import MediaViewer from './MediaViewer';
 import VoiceRecorder from './VoiceRecorder';
+import CallModal from './CallModal';
 
 const MessageArea = () => {
   const dispatch = useDispatch();
@@ -41,12 +42,21 @@ const MessageArea = () => {
   const [mediaViewerIndex, setMediaViewerIndex] = useState(0);
   const [videoThumbnails, setVideoThumbnails] = useState({});
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [showCallModal, setShowCallModal] = useState(false);
+  const [callType, setCallType] = useState('voice');
+  const [callStatus, setCallStatus] = useState('calling');
+  const [callDuration, setCallDuration] = useState(0);
+  const [isCallMinimized, setIsCallMinimized] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+  const [isSpeakerOn, setIsSpeakerOn] = useState(false);
   
   const messageListRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
   const inputRef = useRef(null);
   const paperclipButtonRef = useRef(null);
+  const callTimerRef = useRef(null);
 
   const currentChat = chats.find(chat => chat.id === activeChat);
   const chatMessages = messages[activeChat] || [];
@@ -391,9 +401,70 @@ const MessageArea = () => {
 
   const initiateCall = (type) => {
     if (participant) {
+      setCallType(type);
+      setCallStatus('calling');
+      setCallDuration(0);
+      setShowCallModal(true);
+      setIsCallMinimized(false);
       socketService.initiateCall(participant.id, type);
     }
   };
+
+  const handleAcceptCall = () => {
+    setCallStatus('connecting');
+    setTimeout(() => {
+      setCallStatus('connected');
+      startCallTimer();
+    }, 2000);
+  };
+
+  const handleDeclineCall = () => {
+    setShowCallModal(false);
+    stopCallTimer();
+  };
+
+  const handleEndCall = () => {
+    setShowCallModal(false);
+    setCallStatus('ended');
+    stopCallTimer();
+  };
+
+  const startCallTimer = () => {
+    callTimerRef.current = setInterval(() => {
+      setCallDuration(prev => prev + 1);
+    }, 1000);
+  };
+
+  const stopCallTimer = () => {
+    if (callTimerRef.current) {
+      clearInterval(callTimerRef.current);
+      callTimerRef.current = null;
+    }
+    setCallDuration(0);
+  };
+
+  const handleToggleMute = () => {
+    setIsMuted(!isMuted);
+  };
+
+  const handleToggleVideo = () => {
+    setIsVideoEnabled(!isVideoEnabled);
+  };
+
+  const handleToggleSpeaker = () => {
+    setIsSpeakerOn(!isSpeakerOn);
+  };
+
+  const handleToggleMinimize = () => {
+    setIsCallMinimized(!isCallMinimized);
+  };
+
+  // Cleanup call timer on unmount
+  useEffect(() => {
+    return () => {
+      stopCallTimer();
+    };
+  }, []);
 
   const handleVoiceRecordStart = () => {
     setIsRecordingVoice(true);
@@ -729,6 +800,26 @@ const MessageArea = () => {
         onClose={() => setShowMediaViewer(false)}
         files={mediaViewerFiles}
         initialIndex={mediaViewerIndex}
+      />
+
+      {/* Call Modal */}
+      <CallModal
+        isOpen={showCallModal}
+        onClose={handleEndCall}
+        callType={callType}
+        participant={participant}
+        callStatus={callStatus}
+        duration={callDuration}
+        onAccept={handleAcceptCall}
+        onDecline={handleDeclineCall}
+        onToggleMute={handleToggleMute}
+        onToggleVideo={handleToggleVideo}
+        onToggleSpeaker={handleToggleSpeaker}
+        isMuted={isMuted}
+        isVideoEnabled={isVideoEnabled}
+        isSpeakerOn={isSpeakerOn}
+        isMinimized={isCallMinimized}
+        onToggleMinimize={handleToggleMinimize}
       />
     </div>
   );
