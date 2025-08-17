@@ -448,7 +448,11 @@ const MessageArea = () => {
   };
 
   const handleToggleVideo = () => {
-    setIsVideoEnabled(!isVideoEnabled);
+    const newVideoState = !isVideoEnabled;
+    setIsVideoEnabled(newVideoState);
+    
+    // If turning off video, we'll stop the camera stream
+    // If turning on video, the CallModal will handle requesting camera access
   };
 
   const handleToggleSpeaker = () => {

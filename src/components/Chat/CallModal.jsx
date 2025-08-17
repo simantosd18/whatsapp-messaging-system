@@ -34,6 +34,8 @@ const CallModal = ({
   onToggleMinimize
 }) => {
   const [localStream, setLocalStream] = useState(null);
+  const [cameraError, setCameraError] = useState(null);
+  const [cameraLoading, setCameraLoading] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [controlsTimeout, setControlsTimeout] = useState(null);
   const localVideoRef = useRef(null);
@@ -68,16 +70,63 @@ const CallModal = ({
     }
   };
 
-  // Mock video stream setup
+  // Real camera stream setup
   useEffect(() => {
-    if (isOpen && callType === 'video' && isVideoEnabled) {
-      // In a real app, you would get actual video stream here
-      // For demo, we'll just show placeholder
-      if (localVideoRef.current) {
-        // Mock local video
+    const setupCamera = async () => {
+      if (isOpen && callType === 'video' && isVideoEnabled && !localStream) {
+        setCameraLoading(true);
+        setCameraError(null);
+        
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              facingMode: 'user'
+            },
+            audio: true
+          });
+          
+          setLocalStream(stream);
+          
+          if (localVideoRef.current) {
+            localVideoRef.current.srcObject = stream;
+          }
+          
+          setCameraLoading(false);
+        } catch (error) {
+          console.error('Camera access error:', error);
+          setCameraError(error.message);
+          setCameraLoading(false);
+        }
+      }
+    };
+
+    setupCamera();
+  }, [isOpen, callType, isVideoEnabled, localStream]);
+
+  // Stop camera when video is disabled or modal is closed
+  useEffect(() => {
+    if (!isVideoEnabled || !isOpen) {
+      if (localStream) {
+        localStream.getTracks().forEach(track => {
+          track.stop();
+        });
+        setLocalStream(null);
       }
     }
-  }, [isOpen, callType, isVideoEnabled]);
+  }, [isVideoEnabled, isOpen, localStream]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (localStream) {
+        localStream.getTracks().forEach(track => {
+          track.stop();
+        });
+      }
+    };
+  }, [localStream]);
 
   if (!isOpen) return null;
 
@@ -184,22 +233,40 @@ const CallModal = ({
             {/* Local Video (Picture-in-Picture) */}
             {isVideoEnabled && (
               <div className="absolute top-4 right-4 w-48 h-36 bg-gray-800 rounded-lg overflow-hidden border-2 border-white shadow-lg">
-                <video
-                  ref={localVideoRef}
-                  className="w-full h-full object-cover"
-                  autoPlay
-                  muted
-                  playsInline
-                />
-                {/* Placeholder for demo */}
-                <div className="absolute inset-0 bg-gradient-to-br from-green-600 to-blue-600 flex items-center justify-center">
-                  <div className="text-white text-center">
-                    <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-2">
-                      <Video className="w-8 h-8" />
+                {cameraLoading ? (
+                  <div className="absolute inset-0 bg-gray-800 flex items-center justify-center">
+                    <div className="text-white text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
+                      <p className="text-xs">Starting camera...</p>
                     </div>
-                    <p className="text-xs">You</p>
                   </div>
-                </div>
+                ) : cameraError ? (
+                  <div className="absolute inset-0 bg-red-900 flex items-center justify-center">
+                    <div className="text-white text-center p-2">
+                      <div className="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center mx-auto mb-2">
+                        <Video className="w-4 h-4" />
+                      </div>
+                      <p className="text-xs">Camera unavailable</p>
+                    </div>
+                  </div>
+                ) : localStream ? (
+                  <video
+                    ref={localVideoRef}
+                    className="w-full h-full object-cover transform scale-x-[-1]"
+                    autoPlay
+                    muted
+                    playsInline
+                  />
+                ) : (
+                  <div className="absolute inset-0 bg-gradient-to-br from-green-600 to-blue-600 flex items-center justify-center">
+                    <div className="text-white text-center">
+                      <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-2">
+                        <Video className="w-8 h-8" />
+                      </div>
+                      <p className="text-xs">You</p>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -350,6 +417,7 @@ const CallModal = ({
                           : 'bg-gray-700 hover:bg-gray-600 text-white'
                       }`}
                       title={isVideoEnabled ? 'Turn off camera' : 'Turn on camera'}
+                      disabled={cameraLoading}
                     >
                       {isVideoEnabled ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
                     </button>
@@ -416,6 +484,11 @@ const CallModal = ({
             <div><kbd className="bg-gray-600 px-1 rounded">M</kbd> Mute/Unmute</div>
             {callType === 'video' && <div><kbd className="bg-gray-600 px-1 rounded">V</kbd> Video On/Off</div>}
             <div><kbd className="bg-gray-600 px-1 rounded">Esc</kbd> End Call</div>
+            {cameraError && (
+              <div className="mt-2 text-red-300">
+                <div className="text-xs">Camera: {cameraError}</div>
+              </div>
+            )}
           </div>
         </div>
       )}
