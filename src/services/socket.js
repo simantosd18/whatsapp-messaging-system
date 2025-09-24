@@ -8,6 +8,16 @@ import {
   setOnlineUsers,
   setTyping 
 } from '../store/slices/chatSlice';
+import {
+  receiveIncomingCall,
+  setCallStatus,
+  handleWebRTCOffer,
+  handleWebRTCAnswer,
+  handleICECandidate,
+  setSocketConnected,
+  closeCallModal,
+  addToCallHistory
+} from '../store/slices/callSlice';
 import { addNotification } from '../store/slices/uiSlice';
 import toast from 'react-hot-toast';
 
@@ -20,6 +30,7 @@ class MockSocketService {
   connect(token) {
     console.log('Mock socket connecting...');
     this.connected = true;
+    store.dispatch(setSocketConnected(true));
     
     // Simulate connection delay
     setTimeout(() => {
@@ -84,37 +95,90 @@ class MockSocketService {
   // Call methods
   initiateCall(userId, type = 'voice') {
     console.log('Mock initiating call:', { userId, type });
-    toast.info(`Mock ${type} call initiated`);
+    
+    // Simulate call initiation
+    setTimeout(() => {
+      this.emit('callInitiated', {
+        callId: `call_${Date.now()}`,
+        callerId: store.getState().auth.user?.id,
+        participantId: userId,
+        callType: type,
+        status: 'calling'
+      });
+    }, 500);
+    
+    // Simulate call connection after some time
+    setTimeout(() => {
+      store.dispatch(setCallStatus('connecting'));
+    }, 2000);
+    
+    setTimeout(() => {
+      store.dispatch(setCallStatus('connected'));
+    }, 4000);
   }
 
   acceptCall(callId) {
     console.log('Mock accepting call:', callId);
+    
+    // Simulate call acceptance
+    setTimeout(() => {
+      this.emit('callAccepted', { callId });
+      store.dispatch(setCallStatus('connecting'));
+    }, 500);
+    
+    setTimeout(() => {
+      store.dispatch(setCallStatus('connected'));
+    }, 2000);
   }
 
   rejectCall(callId) {
     console.log('Mock rejecting call:', callId);
+    
+    // Simulate call rejection
+    setTimeout(() => {
+      this.emit('callRejected', { callId });
+      store.dispatch(closeCallModal());
+    }, 500);
   }
 
   endCall(callId) {
     console.log('Mock ending call:', callId);
+    
+    // Simulate call ending
+    setTimeout(() => {
+      this.emit('callEnded', { callId });
+      store.dispatch(closeCallModal());
+    }, 500);
   }
 
   // WebRTC signaling (mock)
   sendOffer(callId, offer) {
     console.log('Mock sending WebRTC offer:', { callId, offer });
+    
+    // Simulate receiving answer
+    setTimeout(() => {
+      this.emit('webrtcAnswer', {
+        callId,
+        answer: { type: 'answer', sdp: 'mock-answer-sdp' }
+      });
+      store.dispatch(handleWebRTCAnswer({ callId, answer: 'mock-answer' }));
+    }, 1000);
   }
 
   sendAnswer(callId, answer) {
     console.log('Mock sending WebRTC answer:', { callId, answer });
+    store.dispatch(handleWebRTCAnswer({ callId, answer }));
   }
 
   sendIceCandidate(callId, candidate) {
     console.log('Mock sending ICE candidate:', { callId, candidate });
+    store.dispatch(handleICECandidate({ callId, candidate }));
   }
 
   disconnect() {
     console.log('Mock socket disconnecting...');
     this.connected = false;
+    store.dispatch(setSocketConnected(false));
     this.listeners.clear();
   }
 }

@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useDispatch } from 'react-redux';
+import { setCameraLoading, setCameraError, setShowControls } from '../../store/slices/callSlice';
 import { 
   Phone, 
   PhoneOff, 
@@ -33,10 +35,11 @@ const CallModal = ({
   isMinimized = false,
   onToggleMinimize
 }) => {
+  const dispatch = useDispatch();
   const [localStream, setLocalStream] = useState(null);
-  const [cameraError, setCameraError] = useState(null);
-  const [cameraLoading, setCameraLoading] = useState(false);
-  const [showControls, setShowControls] = useState(true);
+  const [cameraError, setCameraErrorLocal] = useState(null);
+  const [cameraLoading, setCameraLoadingLocal] = useState(false);
+  const [showControlsLocal, setShowControlsLocal] = useState(true);
   const [controlsTimeout, setControlsTimeout] = useState(null);
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
@@ -50,20 +53,22 @@ const CallModal = ({
 
   // Auto-hide controls for video calls
   useEffect(() => {
-    if (callType === 'video' && callStatus === 'connected' && showControls) {
+    if (callType === 'video' && callStatus === 'connected' && showControlsLocal) {
       const timeout = setTimeout(() => {
-        setShowControls(false);
+        setShowControlsLocal(false);
+        dispatch(setShowControls(false));
       }, 3000);
       setControlsTimeout(timeout);
       
       return () => clearTimeout(timeout);
     }
-  }, [callType, callStatus, showControls]);
+  }, [callType, callStatus, showControlsLocal, dispatch]);
 
   // Show controls on mouse move
   const handleMouseMove = () => {
     if (callType === 'video' && callStatus === 'connected') {
-      setShowControls(true);
+      setShowControlsLocal(true);
+      dispatch(setShowControls(true));
       if (controlsTimeout) {
         clearTimeout(controlsTimeout);
       }
@@ -74,8 +79,10 @@ const CallModal = ({
   useEffect(() => {
     const setupCamera = async () => {
       if (isOpen && callType === 'video' && isVideoEnabled && !localStream) {
-        setCameraLoading(true);
-        setCameraError(null);
+        setCameraLoadingLocal(true);
+        dispatch(setCameraLoading(true));
+        setCameraErrorLocal(null);
+        dispatch(setCameraError(null));
         
         try {
           const stream = await navigator.mediaDevices.getUserMedia({
@@ -93,17 +100,20 @@ const CallModal = ({
             localVideoRef.current.srcObject = stream;
           }
           
-          setCameraLoading(false);
+          setCameraLoadingLocal(false);
+          dispatch(setCameraLoading(false));
         } catch (error) {
           console.error('Camera access error:', error);
-          setCameraError(error.message);
-          setCameraLoading(false);
+          setCameraErrorLocal(error.message);
+          dispatch(setCameraError(error.message));
+          setCameraLoadingLocal(false);
+          dispatch(setCameraLoading(false));
         }
       }
     };
 
     setupCamera();
-  }, [isOpen, callType, isVideoEnabled, localStream]);
+  }, [isOpen, callType, isVideoEnabled, localStream, dispatch]);
 
   // Stop camera when video is disabled or modal is closed
   useEffect(() => {
@@ -366,7 +376,7 @@ const CallModal = ({
 
         {/* Call Controls */}
         <div className={`absolute bottom-0 left-0 right-0 transition-all duration-300 ${
-          callType === 'video' && callStatus === 'connected' && !showControls 
+          callType === 'video' && callStatus === 'connected' && !showControlsLocal 
             ? 'opacity-0 translate-y-full pointer-events-none' 
             : 'opacity-100 translate-y-0'
         }`}>

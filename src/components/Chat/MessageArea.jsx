@@ -15,6 +15,20 @@ import {
 } from 'lucide-react';
 import { fetchMessages, sendMessage } from '../../store/slices/chatSlice';
 import { setSidebarOpen } from '../../store/slices/uiSlice';
+import {
+  initiateCall,
+  acceptCall,
+  declineCall,
+  endCall,
+  toggleMute,
+  toggleVideo,
+  toggleSpeaker,
+  toggleMinimize,
+  setShowControls,
+  setCameraLoading,
+  setCameraError,
+  incrementCallDuration
+} from '../../store/slices/callSlice';
 import { socketService } from '../../services/socket';
 import { formatDistanceToNow } from 'date-fns';
 import MessageList from './MessageList';
@@ -28,6 +42,20 @@ const MessageArea = () => {
   const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
   const { activeChat, chats, messages, onlineUsers } = useSelector((state) => state.chat);
+  const {
+    isCallModalOpen,
+    callStatus,
+    callType,
+    callDuration,
+    participant: callParticipant,
+    isMuted,
+    isVideoEnabled,
+    isSpeakerOn,
+    isMinimized,
+    showControls,
+    cameraError,
+    isCameraLoading
+  } = useSelector((state) => state.call);
   
   const [messageInput, setMessageInput] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -42,14 +70,6 @@ const MessageArea = () => {
   const [mediaViewerIndex, setMediaViewerIndex] = useState(0);
   const [videoThumbnails, setVideoThumbnails] = useState({});
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
-  const [showCallModal, setShowCallModal] = useState(false);
-  const [callType, setCallType] = useState('voice');
-  const [callStatus, setCallStatus] = useState('calling');
-  const [callDuration, setCallDuration] = useState(0);
-  const [isCallMinimized, setIsCallMinimized] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isVideoEnabled, setIsVideoEnabled] = useState(true);
-  const [isSpeakerOn, setIsSpeakerOn] = useState(false);
   
   const messageListRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -399,39 +419,49 @@ const MessageArea = () => {
     setReplyingTo(null);
   };
 
-  const initiateCall = (type) => {
+  const handleInitiateCall = async (type) => {
     if (participant) {
-      setCallType(type);
-      setCallStatus('calling');
-      setCallDuration(0);
-      setShowCallModal(true);
-      setIsCallMinimized(false);
-      socketService.initiateCall(participant.id, type);
+      try {
+        await dispatch(initiateCall({
+          participantId: participant.id,
+          callType: type
+        })).unwrap();
+        
+        // Start socket call
+        socketService.initiateCall(participant.id, type);
+      } catch (error) {
+        console.error('Failed to initiate call:', error);
+      }
     }
   };
 
   const handleAcceptCall = () => {
-    setCallStatus('connecting');
-    setTimeout(() => {
-      setCallStatus('connected');
+    if (callParticipant?.id) {
+      dispatch(acceptCall(callParticipant.id));
+      socketService.acceptCall(callParticipant.id);
       startCallTimer();
-    }, 2000);
+    }
   };
 
   const handleDeclineCall = () => {
-    setShowCallModal(false);
-    stopCallTimer();
+    if (callParticipant?.id) {
+      dispatch(declineCall(callParticipant.id));
+      socketService.rejectCall(callParticipant.id);
+      stopCallTimer();
+    }
   };
 
   const handleEndCall = () => {
-    setShowCallModal(false);
-    setCallStatus('ended');
-    stopCallTimer();
+    if (callParticipant?.id) {
+      dispatch(endCall(callParticipant.id));
+      socketService.endCall(callParticipant.id);
+      stopCallTimer();
+    }
   };
 
   const startCallTimer = () => {
     callTimerRef.current = setInterval(() => {
-      setCallDuration(prev => prev + 1);
+      dispatch(incrementCallDuration());
     }, 1000);
   };
 
@@ -440,27 +470,22 @@ const MessageArea = () => {
       clearInterval(callTimerRef.current);
       callTimerRef.current = null;
     }
-    setCallDuration(0);
   };
 
   const handleToggleMute = () => {
-    setIsMuted(!isMuted);
+    dispatch(toggleMute());
   };
 
   const handleToggleVideo = () => {
-    const newVideoState = !isVideoEnabled;
-    setIsVideoEnabled(newVideoState);
-    
-    // If turning off video, we'll stop the camera stream
-    // If turning on video, the CallModal will handle requesting camera access
+    dispatch(toggleVideo());
   };
 
   const handleToggleSpeaker = () => {
-    setIsSpeakerOn(!isSpeakerOn);
+    dispatch(toggleSpeaker());
   };
 
   const handleToggleMinimize = () => {
-    setIsCallMinimized(!isCallMinimized);
+    dispatch(toggleMinimize());
   };
 
   // Cleanup call timer on unmount
@@ -566,13 +591,13 @@ const MessageArea = () => {
           {currentChat.type !== 'group' && (
             <>
               <button
-                onClick={() => initiateCall('voice')}
+                onClick={() => handleInitiateCall('voice')}
                 className="p-2 text-white hover:bg-green-700 rounded-full transition-colors"
               >
                 <Phone className="w-5 h-5" />
               </button>
               <button
-                onClick={() => initiateCall('video')}
+                onClick={() => handleInitiateCall('video')}
                 className="p-2 text-white hover:bg-green-700 rounded-full transition-colors"
               >
                 <Video className="w-5 h-5" />
@@ -808,10 +833,10 @@ const MessageArea = () => {
 
       {/* Call Modal */}
       <CallModal
-        isOpen={showCallModal}
+        isOpen={isCallModalOpen}
         onClose={handleEndCall}
         callType={callType}
-        participant={participant}
+        participant={callParticipant || participant}
         callStatus={callStatus}
         duration={callDuration}
         onAccept={handleAcceptCall}
@@ -822,7 +847,7 @@ const MessageArea = () => {
         isMuted={isMuted}
         isVideoEnabled={isVideoEnabled}
         isSpeakerOn={isSpeakerOn}
-        isMinimized={isCallMinimized}
+        isMinimized={isMinimized}
         onToggleMinimize={handleToggleMinimize}
       />
     </div>
