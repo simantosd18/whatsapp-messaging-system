@@ -27,7 +27,9 @@ import {
   setShowControls,
   setCameraLoading,
   setCameraError,
-  incrementCallDuration
+  incrementCallDuration,
+  closeCallModal,
+  resetCallState
 } from '../../store/slices/callSlice';
 import { socketService } from '../../services/socket';
 import { formatDistanceToNow } from 'date-fns';

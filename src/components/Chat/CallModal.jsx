@@ -174,7 +174,13 @@ const CallModal = ({
               <Maximize2 className="w-4 h-4" />
             </button>
             <button
-              onClick={onClose}
+              onClick={() => {
+                if (onEndCall) {
+                  onEndCall();
+                } else {
+                  onClose();
+                }
+              }}
               className="p-1 bg-red-500 hover:bg-red-600 rounded transition-colors"
               title="End call"
             >

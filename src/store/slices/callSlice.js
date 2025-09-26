@@ -331,6 +331,11 @@ const callSlice = createSlice({
         state.isSpeakerOn = false;
         state.cameraError = null;
         state.isCameraLoading = false;
+        state.caller = null;
+        state.participant = null;
+        state.localStream = null;
+        state.remoteStream = null;
+        state.peerConnection = null;
       });
   },
 });
