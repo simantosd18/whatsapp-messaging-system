@@ -20,6 +20,7 @@ import {
 const CallModal = ({ 
   isOpen, 
   onClose, 
+  onEndCall,
   callType = 'voice', // 'voice' or 'video'
   participant,
   callStatus = 'calling', // 'calling', 'connecting', 'connected', 'ended'
@@ -465,7 +466,13 @@ const CallModal = ({
 
                   {/* End call */}
                   <button
-                    onClick={onClose}
+                    onClick={() => {
+                      if (onEndCall) {
+                        onEndCall();
+                      } else {
+                        onClose();
+                      }
+                    }}
                     className="w-16 h-16 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-all transform hover:scale-110 shadow-lg"
                     title="End call"
                   >
